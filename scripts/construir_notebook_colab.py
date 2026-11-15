@@ -47,7 +47,7 @@ Este notebook calcula, para cada día del archivo de Excel, las rutas de **míni
 2. En el paso 3 aparece el botón **Elegir archivos**. Seleccione su Excel (`.xlsx`).
    - Puede ser el libro completo, con las hojas Clientes, Matriz_Distancias, Demanda y Vehiculos.
    - También puede ser un libro con **solo la hoja Demanda**. En ese caso se usan los clientes, la matriz y la flota del archivo base.
-3. Espere el cálculo, que toma unos 30 segundos por día. Colab resuelve 2 días a la vez, así que una semana de 6 días tarda cerca de 1,5 minutos. Los resultados aparecen abajo.
+3. Espere el cálculo, que toma entre 30 segundos y 1 minuto por día. Colab resuelve 2 días a la vez, así que una semana de 6 días tarda unos 3 minutos. El resultado no depende de la velocidad del equipo: el mismo archivo da el mismo plan. Los resultados aparecen abajo.
 4. En el paso 7 se descargan **rutas.xlsx** y el **tablero interactivo** (un archivo HTML que se abre en cualquier navegador).
 
 Para resolver otros días, por ejemplo Viernes y Sábado, llene esas columnas en la hoja Demanda y cargue el archivo.
@@ -140,19 +140,20 @@ VELOCIDAD_KMH = 24  #@param {type:"number"}
 DESCARGA_MIN_POR_CLIENTE = 30  #@param {type:"number"}
 INICIO_JORNADA = "07:00"  #@param {type:"string"}
 JORNADA_MAXIMA_MIN = 480  #@param {type:"number"}
-TIEMPO_LIMITE_POR_DIA_S = 30  #@param {type:"slider", min:5, max:120, step:5}
+ITERACIONES_POR_DIA = 25000  #@param {type:"slider", min:5000, max:60000, step:5000}
+#@markdown *Más iteraciones = búsqueda más exhaustiva y más lenta. Con 25.000 se obtuvo el mejor plan conocido en los 6 días de prueba.*
 UMBRAL_ALERTA_PCT = 90  #@param {type:"number"}
 UMBRAL_SUBUTILIZADO_PCT = 50  #@param {type:"number"}
 
 parametros = ruteo.parametros_por_defecto(
     velocidad_kmh=float(VELOCIDAD_KMH), descarga_min=float(DESCARGA_MIN_POR_CLIENTE),
     inicio_jornada=str(INICIO_JORNADA).strip(), jornada_max_min=float(JORNADA_MAXIMA_MIN),
-    tiempo_limite_s=float(TIEMPO_LIMITE_POR_DIA_S), umbral_alerta_pct=float(UMBRAL_ALERTA_PCT),
+    limite_iteraciones=int(ITERACIONES_POR_DIA), umbral_alerta_pct=float(UMBRAL_ALERTA_PCT),
     umbral_subutilizado_pct=float(UMBRAL_SUBUTILIZADO_PCT),
 )
 fin = ruteo.minutos_a_hora(parametros["jornada_max_min"], parametros["inicio_jornada"])
 print(f"Velocidad {VELOCIDAD_KMH} km/h · descarga {DESCARGA_MIN_POR_CLIENTE} min por cliente · "
-      f"jornada {parametros['inicio_jornada']} a {fin} · cálculo hasta {TIEMPO_LIMITE_POR_DIA_S} s por día")
+      f"jornada {parametros['inicio_jornada']} a {fin} · {ruteo.formato_num(ITERACIONES_POR_DIA)} iteraciones por día")
 ''')
 
     md("""
@@ -226,7 +227,7 @@ if not VALIDO:
     print("No se calcula: corrija los errores del paso 3.")
 else:
     dias_con_datos = [d for d in datos.dias if datos.demanda.get(d) is not None]
-    print(f"Resolviendo {len(dias_con_datos)} día(s): {', '.join(dias_con_datos)} (hasta {TIEMPO_LIMITE_POR_DIA_S} s por día)…")
+    print(f"Resolviendo {len(dias_con_datos)} día(s): {', '.join(dias_con_datos)} ({ruteo.formato_num(ITERACIONES_POR_DIA)} iteraciones por día)…")
     _inicio = time.time()
     def _avance(dia, r, hechos, total):
         estado = {"resuelto": "✓ resuelto", "infactible": "⚠ infactible", "error": "✗ error"}.get(r["estado"], r["estado"])

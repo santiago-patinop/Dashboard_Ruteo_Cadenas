@@ -50,7 +50,11 @@ CONFIG: dict = {
     "jornada_max_min": 480.0,        # 8 h: viaje + descargas + regreso
     "nodo_depot": 0,
     # --- Solver ---
-    "tiempo_limite_s": 30.0,         # tiempo máximo de cálculo por día
+    # Criterio de parada por iteraciones (no por reloj): el mismo archivo da el mismo plan en
+    # cualquier computador. El tiempo es solo un tope de seguridad para equipos muy lentos.
+    "limite_iteraciones": 25000,     # soluciones que explora la metaheurística por día
+    "tiempo_limite_s": 180.0,        # tope de seguridad por día (s)
+    "tiempo_estrategia_inicial_s": 3.0,  # tope por cada estrategia de solución inicial (s)
     "estrategias_iniciales": [       # se prueban todas y se parte de la mejor
         "PATH_CHEAPEST_ARC",
         "PARALLEL_CHEAPEST_INSERTION",
@@ -59,7 +63,6 @@ CONFIG: dict = {
         "LOCAL_CHEAPEST_INSERTION",
     ],
     "metaheuristica": "GUIDED_LOCAL_SEARCH",
-    "fraccion_fase_inicial": 0.25,   # parte del tiempo usada para soluciones iniciales
     "tiempo_empaque_s": 10.0,        # límite para el respaldo CP-SAT (bin packing)
     "procesos_paralelos": None,      # None = según núcleos disponibles
     # --- Escalas enteras para OR-Tools (sin pérdida de precisión) ---
@@ -81,7 +84,7 @@ CONFIG: dict = {
 
 
 def parametros_por_defecto(**cambios) -> dict:
-    """Devuelve una copia de CONFIG con los cambios indicados (p. ej. tiempo_limite_s=10)."""
+    """Devuelve una copia de CONFIG con los cambios indicados (p. ej. limite_iteraciones=5000)."""
     parametros = copy.deepcopy(CONFIG)
     parametros.update(cambios)
     return parametros
@@ -740,13 +743,15 @@ def _crear_modelo(inst: dict, vehiculos_permitidos: dict | None = None, penaliza
     return manager, routing
 
 
-def _parametros_busqueda(estrategia: str, metaheuristica: str | None, segundos: float):
-    """Parámetros de búsqueda de OR-Tools."""
+def _parametros_busqueda(estrategia: str, metaheuristica: str | None, segundos: float, iteraciones: int | None = None):
+    """Parámetros de búsqueda de OR-Tools. `iteraciones`: número de soluciones a explorar (criterio de parada)."""
     p = pywrapcp.DefaultRoutingSearchParameters()
     p.first_solution_strategy = getattr(routing_enums_pb2.FirstSolutionStrategy, estrategia)
     if metaheuristica:
         p.local_search_metaheuristic = getattr(routing_enums_pb2.LocalSearchMetaheuristic, metaheuristica)
     p.time_limit.FromMilliseconds(max(100, int(segundos * 1000)))
+    if iteraciones:
+        p.solution_limit = int(iteraciones)
     return p
 
 
@@ -772,25 +777,31 @@ def _costo_entero(inst: dict, rutas: list) -> int:
     return total
 
 
-def _resolver_desde_rutas(inst: dict, rutas: list, segundos: float, parametros: dict):
-    """Mejora un conjunto de rutas factibles con la metaheurística durante `segundos`."""
+def _resolver_desde_rutas(inst: dict, rutas: list, segundos: float, parametros: dict) -> tuple[list, str]:
+    """
+    Mejora un conjunto de rutas factibles con la metaheurística hasta explorar
+    `limite_iteraciones` soluciones (o hasta el tope de `segundos`).
+    Devuelve (rutas, criterio de parada: 'iteraciones' o 'tiempo').
+    """
     manager, routing = _crear_modelo(inst)
-    p = _parametros_busqueda("PATH_CHEAPEST_ARC", parametros["metaheuristica"], segundos)
+    p = _parametros_busqueda("PATH_CHEAPEST_ARC", parametros["metaheuristica"], segundos, parametros["limite_iteraciones"])
     routing.CloseModelWithParameters(p)
     inicial = routing.ReadAssignmentFromRoutes([[manager.NodeToIndex(x) for x in r] for r in rutas], True)
     if inicial is None:
-        return rutas
+        return rutas, "iteraciones"
+    inicio = time.perf_counter()
     sol = routing.SolveFromAssignmentWithParameters(inicial, p)
-    return _extraer_rutas(manager, routing, sol, len(inst["vehiculos"])) if sol else rutas
+    parada = "tiempo" if time.perf_counter() - inicio >= segundos * 0.98 else "iteraciones"
+    return (_extraer_rutas(manager, routing, sol, len(inst["vehiculos"])) if sol else rutas), parada
 
 
-def fase_soluciones_iniciales(inst: dict, parametros: dict, segundos_total: float) -> list:
+def fase_soluciones_iniciales(inst: dict, parametros: dict) -> list:
     """
-    Prueba varias estrategias de solución inicial (con búsqueda local simple).
-    Devuelve [(costo, estrategia, rutas)] de las que encontraron solución factible.
+    Prueba varias estrategias de solución inicial (con búsqueda local simple), cada una con un
+    tope fijo de tiempo. Devuelve [(costo, estrategia, rutas)] de las que encontraron solución factible.
     """
     estrategias = parametros["estrategias_iniciales"]
-    por_estrategia = max(0.5, segundos_total / max(1, len(estrategias)))
+    por_estrategia = parametros["tiempo_estrategia_inicial_s"]
     encontradas = []
     for estrategia in estrategias:
         manager, routing = _crear_modelo(inst)
@@ -899,7 +910,8 @@ def respaldo_penalizado(inst: dict, segundos: float, parametros: dict) -> list |
     """
     penalizacion = int(inst["metros"].max()) * max(inst["costo_x100"]) * len(inst["nodos"]) * 10 + 1
     manager, routing = _crear_modelo(inst, penalizacion=penalizacion)
-    sol = routing.SolveWithParameters(_parametros_busqueda("PARALLEL_CHEAPEST_INSERTION", parametros["metaheuristica"], segundos))
+    sol = routing.SolveWithParameters(_parametros_busqueda("PARALLEL_CHEAPEST_INSERTION", parametros["metaheuristica"], segundos,
+                                                           parametros["limite_iteraciones"]))
     if not sol:
         return None
     rutas = _extraer_rutas(manager, routing, sol, len(inst["vehiculos"]))
@@ -967,7 +979,7 @@ def resolver_ruteo(demanda_dia: dict, matriz: Matriz, flota: list, parametros: d
 
     inst = preparar_instancia(demanda_dia, matriz, flota, parametros)
     limite = parametros["tiempo_limite_s"]
-    candidatos = fase_soluciones_iniciales(inst, parametros, limite * parametros["fraccion_fase_inicial"])
+    candidatos = fase_soluciones_iniciales(inst, parametros)
     uso_respaldo = False
     if candidatos:
         _, estrategia, rutas = candidatos[0]
@@ -984,9 +996,10 @@ def resolver_ruteo(demanda_dia: dict, matriz: Matriz, flota: list, parametros: d
             return {"estado": "infactible", "diagnostico": diagnostico, "vehiculos": vehiculos,
                     "calculo": {"segundos": round(time.perf_counter() - inicio, 2), "uso_respaldo": True}}
     restante = max(1.0, limite - (time.perf_counter() - inicio))
-    rutas = _resolver_desde_rutas(inst, rutas, restante, parametros)
+    rutas, parada = _resolver_desde_rutas(inst, rutas, restante, parametros)
     solucion = construir_solucion(inst, rutas, matriz, parametros)
-    solucion["calculo"] = {"estrategia": estrategia, "uso_respaldo": uso_respaldo,
+    solucion["calculo"] = {"estrategia": estrategia, "uso_respaldo": uso_respaldo, "parada": parada,
+                           "iteraciones": parametros["limite_iteraciones"],
                            "estrategias_factibles": [c[1] for c in candidatos],
                            "segundos": round(time.perf_counter() - inicio, 2)}
     return solucion
@@ -1084,8 +1097,8 @@ def diagnostico_profundo(inst: dict, demanda_dia: dict, flota: list, parametros:
         "titulo": "Sin solución en el tiempo límite",
         "mensaje": (f"No se encontró un plan que cumpla capacidad ({formato_num(total, 1)} de {formato_num(capacidad, 1)} t) "
                     f"y jornada (mínimo estimado {formato_num(minimo_h, 1)} de {formato_num(disponible_h, 1)} h) en "
-                    f"{formato_num(parametros['tiempo_limite_s'], 0)} s. No se demostró que sea imposible: "
-                    "pruebe con más tiempo de cálculo."),
+                    f"{formato_num(parametros['tiempo_limite_s'], 0)} s de búsqueda. No se demostró que sea imposible: "
+                    "pruebe con más iteraciones o más tiempo de cálculo."),
         "cifras": {"demanda_t": total, "capacidad_t": capacidad, "horas_minimas": minimo_h, "horas_disponibles": disponible_h},
     }
 
@@ -1291,7 +1304,8 @@ def encabezado_resultados(datos: DatosRuteo, parametros: dict, problemas: list) 
         "flota": resumen_previo(datos)["flota"],
         "vehiculos": [v["id"] for v in expandir_flota(datos.flota)],
         "parametros": {k: parametros[k] for k in ("velocidad_kmh", "descarga_min", "inicio_jornada", "jornada_max_min",
-                                                   "tiempo_limite_s", "umbral_alerta_pct", "umbral_subutilizado_pct")},
+                                                   "tiempo_limite_s", "limite_iteraciones", "umbral_alerta_pct",
+                                                   "umbral_subutilizado_pct")},
         "resumen_previo": resumen_previo(datos),
         "avisos": [p for p in problemas if p["nivel"] != "error"],
         "dias": [{"dia": d, "estado": "pendiente" if datos.demanda.get(d) is not None else "sin_datos"} for d in datos.dias],

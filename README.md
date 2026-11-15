@@ -105,7 +105,9 @@ El solver es **OR-Tools Routing** (HFVRP):
 
 La búsqueda tiene cuatro pasos:
 1. Prueba 5 estrategias de solución inicial y toma la de menor costo.
-2. Mejora esa solución con *Guided Local Search* hasta el tiempo límite (30 s por día, configurable en `CONFIG`).
+2. Mejora esa solución con *Guided Local Search* hasta explorar 25.000 soluciones por día (`limite_iteraciones` en `CONFIG`).
+   La búsqueda se detiene por número de iteraciones y no por reloj, así que el mismo archivo da el mismo plan en cualquier computador; un equipo más lento solo tarda más.
+   Hay un tope de seguridad de 180 s por día (`tiempo_limite_s`).
 3. Si ninguna estrategia encuentra un plan factible, aplica dos respaldos en orden:
    - Un modelo con penalización alta por cliente omitido. Solo se acepta si al final atiende a todos.
    - Una asignación previa tipo *bin packing* con CP-SAT, que considera capacidad y una cota de jornada, con cortes cuando un grupo de clientes no cabe en una jornada.
@@ -126,7 +128,7 @@ Antes de mostrar un día, `verificar_solucion` recalcula todo desde la matriz or
 
 Todos los parámetros están en `ruteo.CONFIG`:
 - Operación: velocidad, descarga, inicio y duración de la jornada.
-- Solver: tiempo límite y estrategias.
+- Solver: iteraciones por día, tope de seguridad en segundos y estrategias.
 - Tablero: umbrales de alerta (90 %) y de subutilización (50 %).
 - Archivos: tamaño máximo y archivo base.
 
@@ -156,9 +158,10 @@ scripts/                         Generadores de los archivos de prueba y del not
 
 ## Limitaciones
 
-- La búsqueda es heurística con tiempo límite, así que no garantiza el óptimo.
-  En el archivo de ejemplo, correr 120 s por día da los mismos costos que 30 s.
-- Un día "sin solución en el tiempo límite" no siempre es imposible. El diagnóstico lo dice cuando no se pudo demostrar.
+- La búsqueda es heurística, así que no garantiza el óptimo. Con 25.000 iteraciones se obtuvo el mejor plan conocido en los 6 días de prueba.
+- Cada día tarda unos 30 a 50 s en un equipo de referencia; en equipos más lentos tarda más, con el mismo resultado.
+  Si un día alcanza el tope de 180 s, el resultado sí puede variar entre equipos.
+- Un día "sin solución" no siempre es imposible. El diagnóstico lo dice cuando no se pudo demostrar.
 - El trazado del mapa es en línea recta entre paradas y solo sirve de referencia.
 - El mapa base (CARTO/OpenStreetMap) requiere internet. El resto del tablero funciona sin conexión.
 - Los resultados se guardan en memoria mientras la aplicación está abierta. Los archivos subidos no se escriben en disco.

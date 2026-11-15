@@ -48,7 +48,7 @@ md("""
 ## 1. Parámetros de operación
 
 Todos los parámetros viven en un único bloque, `ruteo.CONFIG`, compartido con la aplicación.
-Para cambiar uno basta `ruteo.parametros_por_defecto(tiempo_limite_s=60)`.
+Para cambiar uno basta `ruteo.parametros_por_defecto(limite_iteraciones=40000)`.
 """)
 code("""
 pd.DataFrame(
@@ -138,7 +138,7 @@ Un vehículo sin clientes no sale y no cuesta nada.
 
 **Búsqueda, en fases:**
 1. Se prueban cinco estrategias de solución inicial y se toma la más barata.
-2. Desde ella, *Guided Local Search* mejora el plan hasta el tiempo límite de 30 s por día.
+2. Desde ella, *Guided Local Search* mejora el plan hasta explorar 25.000 soluciones por día. Se detiene por número de iteraciones y no por reloj, así que el mismo archivo da el mismo plan en cualquier computador. Hay un tope de seguridad de 180 s.
 
 **Respaldos si ninguna estrategia inicial encuentra un plan factible** (la capacidad está muy ajustada: 27,5 t contra 28 t):
 - Modelo con penalización alta por cliente omitido. Siempre tiene punto de partida, y la metaheurística reduce las omisiones a cero.
@@ -162,7 +162,7 @@ print("Tope de jornada (s):", inst["limite_s"])
 """)
 md("Fase 1: soluciones iniciales. Con 27,5 t contra 28 t, varias estrategias no encuentran un plan factible.")
 code("""
-iniciales = ruteo.fase_soluciones_iniciales(inst, params, params["tiempo_limite_s"] * params["fraccion_fase_inicial"])
+iniciales = ruteo.fase_soluciones_iniciales(inst, params)
 factibles = {e: costo / 1e5 for costo, e, _ in iniciales}
 pd.DataFrame([{"Estrategia": e, "Factible": e in factibles, "Costo inicial (COP)": factibles.get(e)}
               for e in params["estrategias_iniciales"]])
@@ -237,11 +237,11 @@ md("""
 ## 9. Días infactibles: diagnóstico
 
 Con el archivo de prueba `d_dia_infactible.xlsx`, donde el Viernes suma 30,5 t contra 28 t de flota,
-el día se informa con su causa y los demás se resuelven normalmente. Para no repetir 30 s de cálculo por día,
-esta celda usa un tiempo límite de 5 s.
+el día se informa con su causa y los demás se resuelven normalmente. Para no repetir el cálculo completo,
+esta celda usa 2.000 iteraciones por día (solo sirve para mostrar el diagnóstico).
 """)
 code("""
-res_d = ruteo.resolver_archivo("datos/pruebas/d_dia_infactible.xlsx", parametros=ruteo.parametros_por_defecto(tiempo_limite_s=5))
+res_d = ruteo.resolver_archivo("datos/pruebas/d_dia_infactible.xlsx", parametros=ruteo.parametros_por_defecto(limite_iteraciones=2000))
 print(res_d["mensaje_final"])
 for d in res_d["dias"]:
     if d["estado"] == "infactible":
