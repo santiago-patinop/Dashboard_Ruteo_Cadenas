@@ -11,6 +11,7 @@ Tiene tres piezas que usan el mismo algoritmo:
 | `ruteo.py` | Contiene la configuración, la lectura y validación del Excel, el solver, el diagnóstico de días infactibles, la verificación, los indicadores y los exportes. |
 | `ruteo_distribucion.ipynb` | Explica y ejecuta el proceso paso a paso con `ruteo.py`. |
 | `app.py` + `static/` | Tablero web para el equipo de logística. |
+| `ruteo_colab.ipynb` | Versión para Google Colab: sube el Excel, calcula y descarga resultados. No requiere instalar nada. |
 
 ## Arranque en dos pasos
 
@@ -27,6 +28,28 @@ python app.py
 El navegador se abre en `http://127.0.0.1:8000` con el archivo de ejemplo ya resuelto.
 Si el puerto 8000 está ocupado, la aplicación usa el siguiente libre y lo indica en la terminal.
 Para detenerla, presione `Ctrl+C`.
+
+## Ejecutar en Google Colab (sin instalar nada)
+
+`ruteo_colab.ipynb` es un notebook autocontenido. Pasos para usarlo:
+1. Abra https://colab.research.google.com.
+2. Elija **Archivo → Subir notebook** y seleccione `ruteo_colab.ipynb`.
+3. Elija **Entorno de ejecución → Ejecutar todas**.
+4. En el paso 3 del notebook aparece **Elegir archivos**: suba su Excel (libro completo o solo la hoja Demanda).
+
+El notebook valida el archivo, calcula todos los días (Colab resuelve 2 a la vez) y muestra:
+- el resumen semanal;
+- una pestaña por día con indicadores, mapa y tabla por vehículo;
+- la verificación de restricciones.
+
+Al final descarga `rutas.xlsx` y el tablero interactivo en HTML.
+
+Este notebook lleva empaquetados los mismos `ruteo.py`, `vista_colab.py`, el tablero y el Excel base de este repositorio.
+Si cambia el código, regenérelo con:
+
+```bash
+python scripts/construir_notebook_colab.py
+```
 
 ## Uso del tablero
 
@@ -94,6 +117,8 @@ Todos los parámetros están en `ruteo.CONFIG`:
 ```
 ruteo.py                         Algoritmo (única implementación)
 ruteo_distribucion.ipynb         Notebook explicativo, ya ejecutado
+ruteo_colab.ipynb                Notebook autocontenido para Google Colab
+vista_colab.py                   Presentación de resultados en notebooks (indicadores, mapa folium, gráfico)
 app.py                           Servidor FastAPI
 static/                          index.html, app.css, app.js y vendor/ (Leaflet 1.9.4, Chart.js 4.4.6 locales)
 datos/Reto_VRP_Medellin_Datos.xlsx   Archivo base

@@ -25,7 +25,8 @@ import os
 import re
 import time
 import unicodedata
-from concurrent.futures import ProcessPoolExecutor
+import json
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -1318,10 +1319,11 @@ def _numero_procesos(parametros: dict, n: int) -> int:
 
 
 def resolver_archivo(ruta_o_bytes, nombre_archivo: str | None = None, parametros: dict | None = None,
-                     paralelo: bool = True) -> dict:
+                     paralelo: bool = True, progreso=None) -> dict:
     """
     Lee, valida y resuelve todos los días de un libro. Devuelve una estructura serializable a JSON.
     Si hay errores de validación: {'estado': 'invalido', 'errores': [...]} y no se ejecuta el solver.
+    `progreso(dia, resultado_dia, hechos, total)`: función opcional llamada al terminar cada día.
     """
     parametros = parametros or CONFIG
     if nombre_archivo is None:
@@ -1337,12 +1339,20 @@ def resolver_archivo(ruta_o_bytes, nombre_archivo: str | None = None, parametros
     resultados = encabezado_resultados(datos, parametros, problemas)
     dias = [d for d in datos.dias if datos.demanda.get(d) is not None]
     por_dia = {}
+
+    def registrar(dia, resultado):
+        por_dia[dia] = resultado
+        if progreso:
+            progreso(dia, resultado, len(por_dia), len(dias))
+
     if paralelo and len(dias) > 1:
         with ProcessPoolExecutor(max_workers=_numero_procesos(parametros, len(dias))) as ex:
-            futuros = {d: ex.submit(resolver_dia, datos, d, parametros) for d in dias}
-            por_dia = {d: f.result() for d, f in futuros.items()}
+            futuros = {ex.submit(resolver_dia, datos, d, parametros): d for d in dias}
+            for futuro in as_completed(futuros):
+                registrar(futuros[futuro], futuro.result())
     else:
-        por_dia = {d: resolver_dia(datos, d, parametros) for d in dias}
+        for d in dias:
+            registrar(d, resolver_dia(datos, d, parametros))
     resultados["dias"] = [por_dia.get(d) or resolver_dia(datos, d, parametros) for d in datos.dias]
     resultados["mensaje_final"] = resumen_final(resultados)
     return resultados
@@ -1453,6 +1463,41 @@ def exportar_rutas_excel(resultados: dict) -> bytes:
     salida = io.BytesIO()
     wb.save(salida)
     return salida.getvalue()
+
+
+VENDOR_CDN = {
+    "vendor/leaflet.css": "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css",
+    "vendor/leaflet.js": "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js",
+    "vendor/chart.umd.min.js": "https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.js",
+}
+
+
+def exportar_tablero_html(resultados: dict, directorio_static=None) -> str:
+    """
+    Tablero en un solo archivo HTML: CSS y JavaScript en línea y los resultados incrustados.
+    Si falta una librería local (Leaflet, Chart.js), se enlaza desde su CDN.
+    Solo el mapa base y, en ese caso, las librerías requieren internet.
+    """
+    estaticos = Path(directorio_static or DIRECTORIO / "static")
+    html = (estaticos / "index.html").read_text(encoding="utf-8")
+
+    def estilo(m):
+        ruta = estaticos / m.group(1)
+        if not ruta.exists():
+            return f'<link rel="stylesheet" href="{VENDOR_CDN.get(m.group(1), m.group(1))}">'
+        return f"<style>\n{ruta.read_text(encoding='utf-8')}\n</style>"
+
+    def guion(m):
+        ruta = estaticos / m.group(1)
+        if not ruta.exists():
+            return f'<script src="{VENDOR_CDN.get(m.group(1), m.group(1))}"></script>'
+        codigo = ruta.read_text(encoding="utf-8").replace("</script", "<\\/script")
+        return f"<script>\n{codigo}\n</script>"
+
+    html = re.sub(r'<link rel="stylesheet" href="/static/([^"]+)">', estilo, html)
+    datos = json.dumps(_a_python(resultados), ensure_ascii=False).replace("</", "<\\/")
+    html = html.replace("<!--DATOS_EXPORTADOS-->", f"<script>window.DATOS_EXPORTADOS = {datos};</script>")
+    return re.sub(r'<script src="/static/([^"]+)"></script>', guion, html)
 
 
 def _nombre_hoja(dia: str) -> str:

@@ -291,24 +291,8 @@ async def _leer_resultados(request: Request):
 
 
 def html_autocontenido(resultados: dict) -> str:
-    """
-    HTML de un solo archivo: CSS y JavaScript en línea (incluye Leaflet y Chart.js) y los
-    resultados incrustados. Solo el mapa base requiere internet.
-    """
-    html = (ESTATICOS / "index.html").read_text(encoding="utf-8")
-
-    def estilo(m):
-        return f"<style>\n{(ESTATICOS / m.group(1)).read_text(encoding='utf-8')}\n</style>"
-
-    def guion(m):
-        codigo = (ESTATICOS / m.group(1)).read_text(encoding="utf-8").replace("</script", "<\\/script")
-        return f"<script>\n{codigo}\n</script>"
-
-    html = re.sub(r'<link rel="stylesheet" href="/static/([^"]+)">', estilo, html)
-    datos = json.dumps(resultados, ensure_ascii=False).replace("</", "<\\/")
-    html = html.replace("<!--DATOS_EXPORTADOS-->", f"<script>window.DATOS_EXPORTADOS = {datos};</script>")
-    html = re.sub(r'<script src="/static/([^"]+)"></script>', guion, html)
-    return html
+    """HTML autocontenido del tablero (implementación en ruteo.exportar_tablero_html)."""
+    return ruteo.exportar_tablero_html(resultados, ESTATICOS)
 
 
 # =============================================================================
