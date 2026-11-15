@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es-CO" data-theme="claro" data-paleta="azul">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tablero de rutas</title>
+<link rel="stylesheet" href="/static/vendor/leaflet.css">
+<link rel="stylesheet" href="/static/app.css">
+<script>
+  // Tema y paleta antes de pintar, para evitar parpadeo.
+  (function () {
+    var tema = null, paleta = null;
+    try { tema = localStorage.getItem('ruteo.tema'); paleta = localStorage.getItem('ruteo.paleta'); } catch (e) {}
+    if (!tema) tema = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'oscuro' : 'claro';
+    document.documentElement.setAttribute('data-theme', tema);
+    if (paleta) document.documentElement.setAttribute('data-paleta', paleta);
+  })();
+</script>
+</head>
+<body>
+<div class="app" id="app">
+
+  <header class="encabezado">
+    <div class="marca">
+      <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7" cy="17" r="1.8" fill="currentColor"/><circle cx="17" cy="17" r="1.8" fill="currentColor"/></svg>
+      <div class="marca-texto">
+        <h1>Plan de rutas · <span id="nombre-depot">Depot</span></h1>
+        <p class="meta">
+          <span title="Archivo cargado"><strong id="meta-archivo">—</strong></span>
+          <span class="punto" aria-hidden="true">·</span>
+          <span title="Día seleccionado"><strong id="meta-dia">—</strong></span>
+          <span class="punto" aria-hidden="true">·</span>
+          <span title="Fecha y hora del cálculo"><span class="meta-etq">Calculado</span> <strong id="meta-fecha">—</strong></span>
+          <span id="meta-base" class="etiqueta-base" hidden>Datos base</span>
+          <span id="meta-exportado" class="etiqueta-base" hidden>Copia exportada · solo lectura</span>
+        </p>
+      </div>
+    </div>
+    <div class="acciones" role="toolbar" aria-label="Acciones de archivo y apariencia">
+      <div class="grupo-archivo">
+        <button class="btn primario" id="btn-cargar" type="button" title="Cargar un libro .xlsx (o arrástrelo a la ventana)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M4 20h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Cargar archivo de Excel</span>
+        </button>
+        <input type="file" id="entrada-archivo" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+        <button class="btn" id="btn-plantilla" type="button" title="Libro con la estructura correcta y la hoja Demanda lista para llenar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 13h6M9 17h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          <span>Descargar plantilla</span>
+        </button>
+        <button class="btn" id="btn-rutas" type="button" title="rutas.xlsx con resumen y paradas por día">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12m0 0-5-5m5 5 5-5M4 20h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Descargar rutas</span>
+        </button>
+        <button class="btn" id="btn-exportar" type="button" title="HTML autocontenido para compartir">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Exportar tablero</span>
+        </button>
+      </div>
+      <div class="grupo-apariencia">
+        <div class="paletas" role="radiogroup" aria-label="Color de interfaz" id="paletas"></div>
+        <button class="btn icono" id="btn-tema" type="button" aria-label="Cambiar a modo oscuro" title="Modo claro / oscuro">
+          <svg class="ico-luna" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          <svg class="ico-sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="barra-dias" aria-label="Días">
+    <div class="pestanas" id="pestanas" role="tablist"></div>
+    <div class="estado-calculo" id="estado-calculo" aria-live="polite"></div>
+  </nav>
+
+  <section class="kpis" id="kpis" aria-label="Indicadores del día"></section>
+
+  <main class="cuerpo">
+    <section class="panel panel-mapa" aria-label="Mapa de rutas">
+      <div id="mapa" role="application" aria-label="Mapa"></div>
+      <p class="nota-mapa">Trazado en línea recta entre paradas (referencial). Los km provienen de la matriz de distancias viales.</p>
+    </section>
+    <aside class="lateral">
+      <section class="panel panel-rutas" aria-labelledby="titulo-rutas">
+        <div class="panel-cab">
+          <h2 id="titulo-rutas">Detalle por ruta <span class="ayuda" id="ayuda-rutas">· clic en una fila para ver sus paradas</span></h2>
+          <p class="sin-despachar" id="sin-despachar"></p>
+        </div>
+        <div class="contenedor-tabla" id="contenedor-tabla"></div>
+      </section>
+      <section class="panel panel-grafico" aria-labelledby="titulo-grafico">
+        <div class="panel-cab">
+          <h2 id="titulo-grafico">Costo por día</h2>
+          <span class="ayuda">Etiqueta: toneladas despachadas</span>
+        </div>
+        <div class="lienzo"><canvas id="grafico" aria-label="Costo total por día resuelto" role="img"></canvas></div>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<div class="zona-soltar" id="zona-soltar" hidden><div>Suelte el archivo <strong>.xlsx</strong> para cargarlo</div></div>
+
+<section class="panel-carga" id="panel-carga" hidden aria-live="polite" aria-labelledby="carga-titulo">
+  <div class="panel-carga-cab">
+    <h2 id="carga-titulo">Archivo cargado</h2>
+    <button class="btn icono pequeno" id="cerrar-carga" type="button" aria-label="Cerrar resumen">✕</button>
+  </div>
+  <div id="carga-cuerpo"></div>
+</section>
+
+<dialog class="dialogo" id="dialogo-errores" aria-labelledby="errores-titulo">
+  <div class="dialogo-cab">
+    <h2 id="errores-titulo">El archivo tiene errores</h2>
+    <button class="btn icono pequeno" id="cerrar-errores" type="button" aria-label="Cerrar">✕</button>
+  </div>
+  <p id="errores-intro" class="dialogo-intro"></p>
+  <div class="dialogo-tabla" id="errores-tabla"></div>
+  <p class="dialogo-pie">El tablero conserva el último resultado válido. Corrija el archivo y vuelva a cargarlo.</p>
+</dialog>
+
+<div class="aviso" id="aviso" role="status" hidden></div>
+
+<!--DATOS_EXPORTADOS-->
+<script src="/static/vendor/leaflet.js"></script>
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
