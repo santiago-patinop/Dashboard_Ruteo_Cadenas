@@ -1472,12 +1472,44 @@ VENDOR_CDN = {
 }
 
 
-def exportar_tablero_html(resultados: dict, directorio_static=None) -> str:
+def clave_carto(directorio=None) -> str:
+    """
+    Clave de CARTO Basemaps para quitar la marca de agua del mapa base.
+    Se lee de la variable de entorno CARTO_API_KEY o, si no existe, del archivo .env del proyecto
+    (línea CARTO_API_KEY=...). Nunca se escribe en el código. Devuelve "" si no hay clave.
+    """
+    clave = os.environ.get("CARTO_API_KEY", "").strip()
+    if clave:
+        return clave
+    archivo = Path(directorio or DIRECTORIO) / ".env"
+    if archivo.exists():
+        for linea in archivo.read_text(encoding="utf-8-sig").splitlines():
+            nombre, _, valor = linea.partition("=")
+            if nombre.strip() == "CARTO_API_KEY":
+                return valor.strip().strip('"').strip("'")
+    return ""
+
+
+def url_mapa_base(estilo: str = "light_all", clave: str = "") -> str:
+    """Plantilla de teselas raster de CARTO (light_all / dark_all), con la clave si existe."""
+    url = f"https://{{s}}.basemaps.cartocdn.com/{estilo}/{{z}}/{{x}}/{{y}}{{r}}.png"
+    return url + (f"?key={clave}" if clave else "")
+
+
+def script_configuracion_mapa(clave: str = "") -> str:
+    """Etiqueta <script> que entrega la clave del mapa base al tablero."""
+    return f"<script>window.CLAVE_MAPA = {json.dumps(clave or '')};</script>"
+
+
+def exportar_tablero_html(resultados: dict, directorio_static=None, clave_mapa: str | None = None) -> str:
     """
     Tablero en un solo archivo HTML: CSS y JavaScript en línea y los resultados incrustados.
     Si falta una librería local (Leaflet, Chart.js), se enlaza desde su CDN.
     Solo el mapa base y, en ese caso, las librerías requieren internet.
+    `clave_mapa`: clave de CARTO (por defecto, la de clave_carto()). Queda visible en el HTML,
+    como en cualquier mapa web que use CARTO.
     """
+    clave_mapa = clave_carto() if clave_mapa is None else clave_mapa
     estaticos = Path(directorio_static or DIRECTORIO / "static")
     html = (estaticos / "index.html").read_text(encoding="utf-8")
 
@@ -1496,7 +1528,8 @@ def exportar_tablero_html(resultados: dict, directorio_static=None) -> str:
 
     html = re.sub(r'<link rel="stylesheet" href="/static/([^"]+)">', estilo, html)
     datos = json.dumps(_a_python(resultados), ensure_ascii=False).replace("</", "<\\/")
-    html = html.replace("<!--DATOS_EXPORTADOS-->", f"<script>window.DATOS_EXPORTADOS = {datos};</script>")
+    html = html.replace("<!--DATOS_EXPORTADOS-->",
+                        script_configuracion_mapa(clave_mapa) + f"<script>window.DATOS_EXPORTADOS = {datos};</script>")
     return re.sub(r'<script src="/static/([^"]+)"></script>', guion, html)
 
 

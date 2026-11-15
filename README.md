@@ -29,6 +29,24 @@ El navegador se abre en `http://127.0.0.1:8000` con el archivo de ejemplo ya res
 Si el puerto 8000 está ocupado, la aplicación usa el siguiente libre y lo indica en la terminal.
 Para detenerla, presione `Ctrl+C`.
 
+### Clave del mapa base (CARTO)
+
+CARTO exige una clave gratuita para sus mapas base. Sin clave, el mapa muestra una marca de agua; todo lo demás funciona igual.
+Para agregarla antes de ejecutar:
+
+1. Copie el archivo `.env.ejemplo` y renombre la copia como `.env`, en la misma carpeta de `app.py`.
+2. Abra `.env` y escriba la clave después del signo igual, sin comillas ni espacios:
+
+   ```
+   CARTO_API_KEY=su_clave_aqui
+   ```
+
+3. Inicie la aplicación con `python app.py`. La terminal confirma con «Mapa base CARTO: clave detectada ✓».
+
+El archivo `.env` está en `.gitignore`, así que no se sube a GitHub. También puede definir la variable de entorno `CARTO_API_KEY`, que tiene prioridad sobre el archivo.
+La clave viaja al navegador en cada tesela del mapa, como en cualquier mapa web de CARTO, y queda incluida en el tablero HTML exportado.
+En Google Colab, guárdela en **Secretos** (ícono de llave) con el nombre `CARTO_API_KEY`.
+
 ## Ejecutar en Google Colab (sin instalar nada)
 
 `ruteo_colab.ipynb` es un notebook autocontenido. Pasos para usarlo:

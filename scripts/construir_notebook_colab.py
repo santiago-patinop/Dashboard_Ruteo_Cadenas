@@ -54,6 +54,13 @@ Para resolver otros días, por ejemplo Viernes y Sábado, llene esas columnas en
 **No hay que modificar código.** Un día con la columna vacía se informa como "Sin datos".
 
 > La primera ejecución instala OR-Tools, lo que toma unos 30 a 60 segundos.
+
+**Mapa base sin marca de agua (opcional).** CARTO exige una clave gratuita para sus mapas. Para usarla:
+1. Haga clic en el ícono de **llave (Secretos)** de la barra izquierda de Colab.
+2. Agregue un secreto con nombre `CARTO_API_KEY` y su clave como valor.
+3. Active el acceso para este notebook.
+
+Sin clave, todo funciona igual, pero el mapa muestra la marca de agua de CARTO.
 """)
 
     code(f'''
@@ -108,7 +115,18 @@ try:
     EN_COLAB = True
 except ImportError:
     EN_COLAB = False
+# Clave de CARTO Basemaps: Secretos de Colab (ícono de llave, nombre CARTO_API_KEY) o variable de entorno / .env.
+CLAVE_CARTO = ""
+if EN_COLAB:
+    try:
+        from google.colab import userdata
+        CLAVE_CARTO = (userdata.get("CARTO_API_KEY") or "").strip()
+    except Exception:
+        CLAVE_CARTO = ""
+CLAVE_CARTO = CLAVE_CARTO or ruteo.clave_carto()
 print("✓ Entorno listo" + (" (Google Colab)" if EN_COLAB else " (Jupyter local)"))
+print("  Mapa base CARTO: " + ("clave detectada ✓" if CLAVE_CARTO else
+      "sin clave (el mapa mostrará marca de agua; vea la nota al inicio)"))
 ''')
 
     md("""
@@ -243,7 +261,7 @@ Los días infactibles muestran el diagnóstico en lugar de las rutas.
     code('''
 #@title 6. Detalle por día { display-mode: "form" }
 if resultados:
-    display(HTML(vista_colab.html_dias(resultados)))
+    display(HTML(vista_colab.html_dias(resultados, clave=CLAVE_CARTO)))
 ''')
 
     md("""
@@ -274,7 +292,7 @@ if resultados:
 if resultados:
     Path("rutas.xlsx").write_bytes(ruteo.exportar_rutas_excel(resultados))
     nombre_tablero = "tablero_rutas_" + Path(nombre_archivo).stem.replace(" ", "_") + ".html"
-    Path(nombre_tablero).write_text(ruteo.exportar_tablero_html(resultados, "static"), encoding="utf-8")
+    Path(nombre_tablero).write_text(ruteo.exportar_tablero_html(resultados, "static", CLAVE_CARTO), encoding="utf-8")
     if EN_COLAB:
         _colab_files.download("rutas.xlsx")
         _colab_files.download(nombre_tablero)
@@ -293,7 +311,7 @@ Esta celda muestra aquí mismo el tablero que se descarga en el paso 7. Para ver
 import html as _html, warnings
 warnings.filterwarnings("ignore", message="Consider using IPython.display.IFrame")
 if resultados:
-    _tablero = ruteo.exportar_tablero_html(resultados, "static")
+    _tablero = ruteo.exportar_tablero_html(resultados, "static", CLAVE_CARTO)
     display(HTML(f'<iframe srcdoc="{_html.escape(_tablero)}" style="width:100%;height:780px;border:1px solid #e1e4ea;border-radius:10px"></iframe>'))
 ''')
 

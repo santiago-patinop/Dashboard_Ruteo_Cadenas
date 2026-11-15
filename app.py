@@ -209,7 +209,10 @@ async def error_http(_request: Request, exc: StarletteHTTPException):
 
 @app.get("/", response_class=HTMLResponse)
 async def tablero():
-    return FileResponse(ESTATICOS / "index.html", headers={"Cache-Control": "no-store"})
+    """Tablero con la clave del mapa base (si existe) inyectada en la página."""
+    html = (ESTATICOS / "index.html").read_text(encoding="utf-8")
+    html = html.replace("<!--DATOS_EXPORTADOS-->", ruteo.script_configuracion_mapa(ruteo.clave_carto()))
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/inicial")
@@ -312,7 +315,9 @@ def _puerto_libre(preferido: int) -> int:
 def main():
     puerto = _puerto_libre(PUERTO)
     url = f"http://{HOST}:{puerto}"
-    print(f"\n  Tablero de ruteo disponible en {url}\n  (Ctrl+C para detener)\n")
+    print(f"\n  Tablero de ruteo disponible en {url}\n  (Ctrl+C para detener)")
+    print("  Mapa base CARTO: " + ("clave detectada ✓" if ruteo.clave_carto() else
+          "sin clave (el mapa mostrará marca de agua). Defina CARTO_API_KEY en el archivo .env") + "\n")
     if os.environ.get("RUTEO_NO_ABRIR") != "1":
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host=HOST, port=puerto, log_level="warning")

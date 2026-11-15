@@ -12,7 +12,7 @@ import math
 
 import pandas as pd
 
-from ruteo import formato_cop, formato_num
+from ruteo import formato_cop, formato_num, url_mapa_base
 
 # Mismos colores de ruta del tablero (Okabe-Ito, aptos para daltonismo).
 COLORES_RUTA = ["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9", "#7A5195", "#8C6D31", "#4D4D4D", "#C0392B"]
@@ -132,7 +132,7 @@ def tabla_rutas(resultados: dict, dia: dict) -> str:
             + "".join(detalles))
 
 
-def mapa_folium(resultados: dict, dia: dict, alto: int = 460):
+def mapa_folium(resultados: dict, dia: dict, alto: int = 460, clave: str = ""):
     """Mapa del día: depot, rutas con sentido, clientes numerados y clientes sin pedido en gris."""
     import folium
     from folium.plugins import PolyLineTextPath
@@ -141,7 +141,7 @@ def mapa_folium(resultados: dict, dia: dict, alto: int = 460):
     depot = resultados["depot"]
     puntos = [(c["lat"], c["lon"]) for c in resultados["clientes"]]
     m = folium.Map(tiles=None, control_scale=True, zoom_snap=0.25)
-    folium.TileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", name="Mapa base", control=False,
+    folium.TileLayer(url_mapa_base("light_all", clave), name="Mapa base", control=False,
                      attr='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; '
                           '<a href="https://carto.com/attributions">CARTO</a>', subdomains="abcd", max_zoom=19).add_to(m)
     m.fit_bounds([[min(p[0] for p in puntos), min(p[1] for p in puntos)], [max(p[0] for p in puntos), max(p[1] for p in puntos)]],
@@ -190,7 +190,7 @@ def _iframe_mapa(mapa, alto: int) -> str:
             f"border-radius:8px' loading='eager'></iframe>")
 
 
-def html_dias(resultados: dict, alto_mapa: int = 460) -> str:
+def html_dias(resultados: dict, alto_mapa: int = 460, clave: str = "") -> str:
     """Pestañas por día con indicadores, mapa y tabla (o diagnóstico / sin datos)."""
     pestanas, paneles, css_activo = [], [], []
     primero = next((d["dia"] for d in resultados["dias"] if d["estado"] in ("resuelto", "infactible", "error")), None)
@@ -204,14 +204,14 @@ def html_dias(resultados: dict, alto_mapa: int = 460) -> str:
         pestanas.append(f"<input type='radio' name='dias' id='{ident}' {marcado}><label for='{ident}'>{_e(d['dia'])}{icono}</label>")
         css_activo.append(f"#{ident}:checked~#p{ident}{{position:static}} #{ident}:checked+label{{background:#1d4ed8;color:#fff}}")
         if d["estado"] == "resuelto":
-            cuerpo = (tarjetas_kpi(resultados, d) + _iframe_mapa(mapa_folium(resultados, d, alto_mapa), alto_mapa)
+            cuerpo = (tarjetas_kpi(resultados, d) + _iframe_mapa(mapa_folium(resultados, d, alto_mapa, clave), alto_mapa)
                       + "<div class='nota'>Trazado en línea recta entre paradas (referencial). Los km provienen de la matriz de distancias viales.</div>"
                       + tabla_rutas(resultados, d))
         else:
             g = d.get("diagnostico") or {"titulo": "No fue posible calcular el día", "mensaje": d.get("mensaje", "")}
             cuerpo = (f"<div class='diag'><b>⚠ {_e(d['dia'])}: {_e(g['titulo'])}</b><br>{_e(g['mensaje'])}</div>"
                       f"<div class='nota'>No se publican rutas para este día. Clientes con pedido en el mapa (punto oscuro).</div>"
-                      + _iframe_mapa(mapa_folium(resultados, d, alto_mapa), alto_mapa))
+                      + _iframe_mapa(mapa_folium(resultados, d, alto_mapa, clave), alto_mapa))
         paneles.append(f"<div class='panel' id='p{ident}'>{cuerpo}</div>")
     return (ESTILO + f"<style>{''.join(css_activo)}</style><div class='rt'><div class='tabs'>"
             + "".join(pestanas) + "".join(paneles) + "</div></div>")

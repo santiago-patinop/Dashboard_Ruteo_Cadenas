@@ -34,6 +34,9 @@
     claro: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
     oscuro: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
   };
+  // Clave de CARTO Basemaps (la entrega el servidor desde .env o CARTO_API_KEY). Sin clave, CARTO muestra marca de agua.
+  const CLAVE_MAPA = window.CLAVE_MAPA || '';
+  const urlMapa = (t) => MAPAS_BASE[t] + (CLAVE_MAPA ? '?key=' + encodeURIComponent(CLAVE_MAPA) : '');
   const ATRIBUCION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
   // ---------------------------------------------------------------- Estado
@@ -117,7 +120,7 @@
     document.documentElement.setAttribute('data-theme', nuevo);
     guardarPreferencia('ruteo.tema', nuevo);
     actualizarBotonTema();
-    if (capaBase) capaBase.setUrl(MAPAS_BASE[nuevo]);
+    if (capaBase) capaBase.setUrl(urlMapa(nuevo));
     renderizarDia(true);
   }
   function actualizarBotonTema() {
@@ -131,7 +134,7 @@
   function iniciarMapa() {
     mapa = L.map('mapa', { zoomControl: true, attributionControl: true, zoomSnap: 0.25 });
     mapa.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
-    capaBase = L.tileLayer(MAPAS_BASE[tema()], { attribution: ATRIBUCION, subdomains: 'abcd', maxZoom: 19 }).addTo(mapa);
+    capaBase = L.tileLayer(urlMapa(tema()), { attribution: ATRIBUCION, subdomains: 'abcd', maxZoom: 19 }).addTo(mapa);
     capaGris = L.layerGroup().addTo(mapa);
     capaRutas = L.layerGroup().addTo(mapa);
     capaFlechas = L.layerGroup().addTo(mapa);
